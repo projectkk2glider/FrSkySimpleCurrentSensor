@@ -1,13 +1,15 @@
 
 
 /*
+  This project was inspired by open9x Vario project and some parts of the 
+  code were taken from it.
 
 Changelog:
 
 V3 - 23.8.2013
   * fixed rounding from float to integer
   * better and simpler averaging (median)
-  * data sent to frsky receiver every ~200ms
+  * data sent to FrSky receiver every ~200ms
   * using low power sleep (average consumption with sensor 20mA, without power saving 35mA)
   * Verified voltage calibration - perfect
   * green LED turned off 
@@ -26,14 +28,13 @@ V1 - 20.8.2013
 #include <SoftwareSerial.h>
 #include <LowPower.h>  //from https://github.com/rocketscream/Low-Power
 
-//#define DEBUG
+// enable next line to see debug prints on serial port at 115200 baud
+#define DEBUG
 
-// Pin 13 has an LED connected on most Arduino boards.
-// give it a name:
-//#define CURRENT_PIN  6    //vhod A6
-//#define CURRENT_PIN_NAME   A6
-#define PIN_SerialTX        4  // 4  the pin to transmit the serial data to the frsky telemetry enabled receiver
-
+#define PIN_Led             13    // on-board led 
+#define PIN_SerialTX         4    // the TX line for serial data to the FrSky telemetry enabled hub receiver (D series)
+#define PIN_Current         A3    // analog input for current sensor
+#define PIN_Voltage         A1    // analog input for voltage sensor
 
 //------------------------------------------------------------------------------------------------
 // FRSKY constants
@@ -81,40 +82,38 @@ V1 - 20.8.2013
 // Global variables
 //------------------------------------------------------------------------------------------------
 
-SoftwareSerial _mySerial(0, PIN_SerialTX,true); // RX, TX
-unsigned int n = 0;
+SoftwareSerial _mySerial(0, PIN_SerialTX, true); 
 unsigned int SumCount = 0;
 unsigned int Current_raw_sum = 0;
 unsigned int Voltage_raw_sum = 0;
 
 
-
 void setup()
 {
-  // initialize the digital pin as an output.
-  digitalWrite(2, HIGH); //enable pullup
-  digitalWrite(3, HIGH); //enable pullup
-  //digitalWrite(4, HIGH); //Sofware serial output
-  digitalWrite(5, HIGH); //enable pullup
-  digitalWrite(6, HIGH); //enable pullup
-  digitalWrite(7, HIGH); //enable pullup
-  digitalWrite(8, HIGH); //enable pullup
-  digitalWrite(9, HIGH); //enable pullup
-  digitalWrite(10, HIGH); //enable pullup
-  digitalWrite(11, HIGH); //enable pullup
-  digitalWrite(12, HIGH); //enable pullup
-  pinMode(13, OUTPUT);       //LED output
-  digitalWrite(13, LOW); //turn off LED
+  // all IO pins are inputs at startup
+  // enable pull up on all unused inputs to reduce power usage
+  for(int i = 2; i <= 13; i++) {
+    if ((i != PIN_Led) && (i != PIN_SerialTX)) {
+      digitalWrite(i, HIGH); //enable pullup  
+    }
+  }
 
-  digitalWrite(A0, HIGH); //enable pullup
-  digitalWrite(A2, HIGH); //enable pullup
-  //pinMode(A3, INPUT);          //A3 is voltage sensor
-  digitalWrite(A3, LOW);       //disable pullup for actual analog input
-  digitalWrite(A4, HIGH); //enable pullup
-  digitalWrite(A5, HIGH); //enable pullup
-  //pinMode(A6, INPUT);          //A6 is current sensor
-  digitalWrite(A6, LOW);       //disable pullup for actual analog input
-  digitalWrite(A7, HIGH); //enable pullup
+  // same for unused analog inputs
+  for(int i = A0; i <= A7; i++) {
+    if ((i != PIN_Current) && (i != PIN_Voltage)) {
+      digitalWrite(i, HIGH); //enable pullup  
+    }
+  }
+
+  // setup LED pin
+  pinMode(PIN_Led, OUTPUT);
+  digitalWrite(PIN_Led, LOW);   //turn off LED
+
+  // setup serial TX pin (no additonal setup needed)
+
+  // setup analog inputs (disable pullup for analog input)
+  digitalWrite(PIN_Current, LOW);
+  digitalWrite(PIN_Voltage, LOW);
 
 #ifdef DEBUG
   Serial.begin(115200);
@@ -130,7 +129,8 @@ void setup()
 
 void loop()
 {
-  //sleep in low power mode to reduce current consuption
+  static int n = 0;
+  //sleep in low power mode to reduce current consumption
   LowPower.idle(SLEEP_15Ms, ADC_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_OFF, SPI_OFF, USART0_OFF, TWI_OFF);
 
   //read sensors
@@ -139,28 +139,23 @@ void loop()
   {
     n = 0;
     //send data
+    digitalWrite(PIN_Led, HIGH);
     sendData();
-    //toogle_led();
-    delay(10); //delay needed before going into low powe mode to finis sending serial data
+    digitalWrite(PIN_Led, LOW);
+    delay(10); //delay needed before going into low power mode to finish sending serial data
   }
-    
 }
 
 
 void readInputs()
 {
-  Current_raw_sum += analogRead(6);
-  Voltage_raw_sum += analogRead(3);
+  Current_raw_sum += analogRead(PIN_Current);
+  Voltage_raw_sum += analogRead(PIN_Voltage);
   SumCount += 1;
 }
 
 void sendData()
 {
-  //calculate
-  //float Current = ( (Current_raw * 5.0 / 1023.0) - 0.588 )  * 25.0;
-  //float Current = ( (Current_raw_avg_x10 / 10.0 * 5.0 / 1023.0) - 0.588 )  * 25.0;
-  //float Current = ( (Current_raw_avg_x10 / 2046.0) - 0.588 )  * 25.0;
-  //float Current = (Current_raw_avg_x10 / 81.84) - 14.7 ;
   float Current = (( Current_raw_sum / float(SumCount) ) / 8.184) - 14.7; //calibrated to my sensor (RC filter 22k/1uF)
   if ( Current < 0 )
   {
@@ -170,9 +165,7 @@ void sendData()
   SendValue(FRSKY_USERDATA_CURRENT, (uint16_t)(Current * 10.0 + 0.5));
   
   
-  //float Voltage = ( Voltage_raw_avg_x10 * 5.0 / 1023 ) * 5.61 ; 
-  //float Voltage = Voltage_raw_avg_x10 / 364.7058;
-  float Voltage = ( Voltage_raw_sum / float(SumCount) ) / 36.47058; //calibrated to my sensor (divider and RC filter: 22k/4k7/1uF, divider for max 6S battery)
+  float Voltage = ( Voltage_raw_sum / float(SumCount) ) / 36.63348; //36.47058; //calibrated to my sensor (divider and RC filter: 22k/4k7/1uF, divider for max 6S battery)
   
   SendValue(FRSKY_USERDATA_VFAS_NEW, (uint16_t)(Voltage * 10.0 + 0.5));
   _mySerial.write(0x5E); // End of Frame
@@ -181,7 +174,7 @@ void sendData()
 #ifdef DEBUG  
   Serial.print("avgc:"); Serial.print(Current_raw_sum); 
   Serial.print(" avgv:"); Serial.print(Voltage_raw_sum); 
-  Serial.print(" cur:"); Serial.print(Current); //Serial.println("");   
+  Serial.print(" cur:"); Serial.print(Current);   
   Serial.print(" vol:"); Serial.print(Voltage);
   Serial.print(" cnt:"); Serial.print(SumCount); Serial.println("");   
 #endif 
@@ -199,7 +192,7 @@ void toogle_led()
 }
 
 /**********************************************************/
-/* SendValue => send a value as frsky sensor hub data     */
+/* SendValue => send a value as FrSky sensor hub data     */
 /**********************************************************/
 void SendValue(uint8_t ID, uint16_t Value) 
 {
