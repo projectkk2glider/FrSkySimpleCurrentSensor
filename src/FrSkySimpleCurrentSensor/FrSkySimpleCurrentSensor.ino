@@ -29,14 +29,16 @@ V1 - 20.8.2013
 #include <LowPower.h>  //from https://github.com/rocketscream/Low-Power
 
 // enable next line to see debug prints on serial port at 115200 baud
-#define DEBUG
+// #define DEBUG
 
 #define PIN_Led             13    // on-board led 
 #define PIN_SerialTX         4    // the TX line for serial data to the FrSky telemetry enabled hub receiver (D series)
 #define PIN_Current         A3    // analog input for current sensor
 #define PIN_Voltage         A1    // analog input for voltage sensor
-#define PIN_LM35_Signal     A0    // analog input for LM35 
-#define PIN_LM35_Power      12    // output that supplies power to LM35 sensor
+#define PIN_LM35_T1_Signal  A0    // analog input for LM35 T1 sensor
+#define PIN_LM35_T1_Power   12    // output that supplies power to LM35 T1 sensor
+#define PIN_LM35_T2_Signal  A5    // analog input for LM35 T2 sensor
+#define PIN_LM35_T2_Power    2    // output that supplies power to LM35 T2 sensor
 
 //------------------------------------------------------------------------------------------------
 // FRSKY constants
@@ -88,8 +90,11 @@ SoftwareSerial _mySerial(0, PIN_SerialTX, true);
 unsigned int SumCount = 0;
 unsigned int Current_raw_sum = 0;
 unsigned int Voltage_raw_sum = 0;
-#if defined(PIN_LM35_Signal)
-  unsigned int Temperature_raw_sum = 0;
+#if defined(PIN_LM35_T1_Signal)
+  unsigned int Temperature1_raw_sum = 0;
+#endif
+#if defined(PIN_LM35_T2_Signal)
+  unsigned int Temperature2_raw_sum = 0;
 #endif
 
 
@@ -107,8 +112,11 @@ void setup()
   for(int i = A0; i <= A7; i++) {
     if (i == PIN_Current) continue;
     if (i == PIN_Voltage) continue;
-#if defined(PIN_LM35_Signal)
-    if (i == PIN_LM35_Signal) continue;
+#if defined(PIN_LM35_T1_Signal)
+    if (i == PIN_LM35_T1_Signal) continue;
+#endif
+#if defined(PIN_LM35_T2_Signal)
+    if (i == PIN_LM35_T2_Signal) continue;
 #endif
     digitalWrite(i, HIGH); //enable pullup  
   }
@@ -122,14 +130,21 @@ void setup()
   // setup analog inputs (disable pullup for analog input)
   digitalWrite(PIN_Current, LOW);
   digitalWrite(PIN_Voltage, LOW);
-#if defined(PIN_LM35_Signal)
-  digitalWrite(PIN_LM35_Signal, LOW);
+#if defined(PIN_LM35_T1_Signal)
+  digitalWrite(PIN_LM35_T1_Signal, LOW);
+#endif
+#if defined(PIN_LM35_T2_Signal)
+  digitalWrite(PIN_LM35_T2_Signal, LOW);
 #endif
 
   // setup LM35 power pin
-#if defined(PIN_LM35_Power)
-  pinMode(PIN_LM35_Power, OUTPUT);
-  digitalWrite(PIN_LM35_Power, HIGH);   //turn on power
+#if defined(PIN_LM35_T1_Power)
+  pinMode(PIN_LM35_T1_Power, OUTPUT);
+  digitalWrite(PIN_LM35_T1_Power, HIGH);   //turn on power
+#endif
+#if defined(PIN_LM35_T2_Power)
+  pinMode(PIN_LM35_T2_Power, OUTPUT);
+  digitalWrite(PIN_LM35_T2_Power, HIGH);   //turn on power
 #endif
 
 #ifdef DEBUG
@@ -168,8 +183,11 @@ void readInputs()
 {
   Current_raw_sum += analogRead(PIN_Current);
   Voltage_raw_sum += analogRead(PIN_Voltage);
-#if defined(PIN_LM35_Signal)
-  Temperature_raw_sum += analogRead(PIN_LM35_Signal);
+#if defined(PIN_LM35_T1_Signal)
+  Temperature1_raw_sum += analogRead(PIN_LM35_T1_Signal);
+#endif
+#if defined(PIN_LM35_T2_Signal)
+  Temperature2_raw_sum += analogRead(PIN_LM35_T2_Signal);
 #endif
   SumCount += 1;
 }
@@ -188,9 +206,13 @@ void sendData()
   float Voltage = ( Voltage_raw_sum / float(SumCount) ) / 36.63348; //calibrated to my sensor (divider and RC filter: 22k/4k7/1uF, divider for max 6S battery)
   SendValue(FRSKY_USERDATA_VFAS_NEW, (uint16_t)(Voltage * 10.0 + 0.5));
 
-#if defined(PIN_LM35_Signal)
-  float Temperature = ( Temperature_raw_sum / float(SumCount) ) * 0.48828125; 
-  SendValue(FRSKY_USERDATA_TEMP1, (int16_t)(Temperature + 0.5));
+#if defined(PIN_LM35_T1_Signal)
+  float Temperature1 = ( Temperature1_raw_sum / float(SumCount) ) * 0.48828125; 
+  SendValue(FRSKY_USERDATA_TEMP1, (int16_t)(Temperature1 + 0.5));
+#endif
+#if defined(PIN_LM35_T2_Signal)
+  float Temperature2 = ( Temperature2_raw_sum / float(SumCount) ) * 0.48828125; 
+  SendValue(FRSKY_USERDATA_TEMP2, (int16_t)(Temperature2 + 0.5));
 #endif
 
   _mySerial.write(0x5E); // End of Frame
@@ -201,16 +223,22 @@ void sendData()
   Serial.print(" avgv:"); Serial.print(Voltage_raw_sum); 
   Serial.print(" cur:"); Serial.print(Current);   
   Serial.print(" vol:"); Serial.print(Voltage);
-#if defined(PIN_LM35_Signal)
-  Serial.print(" temp:"); Serial.print(Temperature); 
+#if defined(PIN_LM35_T1_Signal)
+  Serial.print(" T1:"); Serial.print(Temperature1); 
+#endif
+#if defined(PIN_LM35_T1_Signal)
+  Serial.print(" T2:"); Serial.print(Temperature2); 
 #endif
   Serial.print(" cnt:"); Serial.print(SumCount); 
   Serial.println("");   
 #endif 
 
   SumCount = Voltage_raw_sum = Current_raw_sum = 0;
-#if defined(PIN_LM35_Signal)
-  Temperature_raw_sum = 0;
+#if defined(PIN_LM35_T1_Signal)
+  Temperature1_raw_sum = 0;
+#endif
+#if defined(PIN_LM35_T2_Signal)
+  Temperature2_raw_sum = 0;
 #endif
   
 }
